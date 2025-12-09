@@ -1,8 +1,10 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, g
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, User, VMRequest
 from config import Config
+from proxmoxer import ProxmoxAPI
+import random, string, time
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -16,32 +18,29 @@ login_manager.login_view = 'login'
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-def create_tables():
-    if not hasattr(app, 'tables_created'):
-        db.create_all()
+init_done = False
 
-        # Utenti di test (solo se non esistono già)
-        if not User.query.filter_by(username='admin').first():
-            admin = User(username='admin',
-                         password=generate_password_hash('admin&1'),
-                         is_admin=True)
-            smane = User(username='smane',
-                         password=generate_password_hash('Smane&1'),
-                         is_admin=False)
-            luigi = User(username='luigi',
-                         password=generate_password_hash('Luigi&1'),
-                         is_admin=False)
-            db.session.add(admin)
-            db.session.add(smane)
-            db.session.add(luigi)
+@app.before_request
+def create_tables_and_users():
+    global init_done
+    if not init_done:
+        db.create_all()  
+        if User.query.count() == 0:
+            admin = User(username='admin', password=generate_password_hash('admin&1'), is_admin=True)
+            smane = User(username='smane', password=generate_password_hash('Smane&1'), is_admin=False)
+            luigi = User(username='luigi', password=generate_password_hash('Luigi&1'), is_admin=False)
+            db.session.add_all([admin, smane, luigi])
             db.session.commit()
+            print("\nUtenti di test creati:")
+            print("   → admin    / admin&1")
+            print("   → smane    / Smane&1")
+            print("   → luigi    / Luigi&1\n")
 
-        app.tables_created = True
+        init_done = True
 
 @app.route('/')
 def index():
     return redirect(url_for('login'))
-
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -49,22 +48,17 @@ def login():
         username = request.form['username']
         password = request.form['password']
         user = User.query.filter_by(username=username).first()
-
         if user and check_password_hash(user.password, password):
             login_user(user)
             return redirect(url_for('dashboard'))
-        else:
-            flash('Username o password errati', 'danger')
-
+        flash('Credenziali errate', 'danger')
     return render_template('login.html')
-
 
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
     return redirect(url_for('login'))
-
 
 @app.route('/dashboard')
 @login_required
@@ -75,7 +69,6 @@ def dashboard():
     else:
         my_requests = VMRequest.query.filter_by(user_id=current_user.id).all()
         return render_template('dashboard.html', requests=my_requests)
-
 
 @app.route('/request_vm', methods=['GET', 'POST'])
 @login_required
@@ -89,44 +82,90 @@ def request_vm():
             nuova = VMRequest(user_id=current_user.id, vm_type=vm_type)
             db.session.add(nuova)
             db.session.commit()
-            flash('Richiesta inviata correttamente! Attendi l’approvazione.', 'success')
+            flash('Richiesta inviata! Attendi approvazione.', 'success')
             return redirect(url_for('dashboard'))
-
     return render_template('request_vm.html')
-
 
 @app.route('/admin/approve/<int:req_id>')
 @login_required
 def approve_request(req_id):
     if not current_user.is_admin:
-        flash('Accesso negato')
+        flash('Accesso negato', 'danger')
         return redirect(url_for('dashboard'))
 
     req = VMRequest.query.get_or_404(req_id)
-    req.status = 'approved'
-
-    req.vm_id = 10000 + req_id
-    req.ip_address = f"10.0.0.{50 + req_id}"
-    req.password = "SuperPassword123!"
-
-    db.session.commit()
-    flash(f'Richiesta #{req_id} approvata e VM creata (simulata)', 'success')
-    return redirect(url_for('dashboard'))
-
-
-@app.route('/admin/reject/<int:req_id>')
-@login_required
-def reject_request(req_id):
-    if not current_user.is_admin:
-        flash('Accesso negato')
+    if req.status != 'pending':
+        flash('Richiesta già gestita', 'warning')
         return redirect(url_for('dashboard'))
 
-    req = VMRequest.query.get_or_404(req_id)
-    req.status = 'rejected'
-    db.session.commit()
-    flash(f'Richiesta #{req_id} rifiutata', 'info')
-    return redirect(url_for('dashboard'))
+    try:
+        proxmox = ProxmoxAPI(
+            Config.PROXMOX_HOST.replace('https://', '').replace('http://', '').split(':')[0],
+            user=Config.PROXMOX_USER,
+            password=Config.PROXMOX_PASSWORD,
+            port=8006,
+            verify_ssl=Config.PROXMOX_VERIFY_SSL
+        )
 
+        risorse = {
+            'bronze': {'cores': 1, 'memory': 1024,  'disk': 10},
+            'silver': {'cores': 2, 'memory': 2048,  'disk': 20},
+            'gold':   {'cores': 4, 'memory': 4096,  'disk': 40}
+        }[req.vm_type]
+
+        password = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+
+        new_vmid = 10000 + req.id
+
+        proxmox.nodes(Config.PROXMOX_NODE).qemu(9000).clone.post(
+            newid=new_vmid,
+            name=f"portale-{req.user.username}-{req.id}",
+            full=1,
+            target=Config.PROXMOX_NODE
+        )
+
+        proxmox.nodes(Config.PROXMOX_NODE).qemu(new_vmid).config.post(
+            cores=risorse['cores'],
+            memory=risorse['memory'],
+            cipassword=password,
+            ciuser='root',
+            searchdomain='local',
+            nameserver='8.8.8.8',
+            ipconfig0='ip=dhcp'
+        )
+
+        proxmox.nodes(Config.PROXMOX_NODE).qemu(new_vmid).status.start.post()
+
+        time.sleep(12)
+        ip = "IP non ancora disponibile (attendi 30s)"
+        try:
+            net = proxmox.nodes(Config.PROXMOX_NODE).qemu(new_vmid).agent('network-get-interfaces').get()
+            for iface in net['result']:
+                if 'ip-addresses' in iface:
+                    for addr in iface['ip-addresses']:
+                        if addr.get('ip-address-type') == 'ipv4' and not addr['ip-address'].startswith('127'):
+                            ip = addr['ip-address']
+                            break
+                    if ip != "IP non ancora disponibile (attendi 30s)":
+                        break
+        except:
+            pass
+
+        req.status = 'approved'
+        req.vm_id = new_vmid
+        req.ip_address = ip
+        req.password = password
+        db.session.commit()
+
+        flash(f'VM CREATA CON SUCCESSO! → ID {new_vmid} | IP: {ip} | Pass: {password}', 'success')
+
+    except Exception as e:
+        req.status = 'rejected'
+        db.session.commit()
+        flash(f'Errore creazione VM: {str(e)}', 'danger')
+        print("Errore Proxmox:", e)
+
+    return redirect(url_for('dashboard'))
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(host='0.0.0.0', port=5000, debug=True)
