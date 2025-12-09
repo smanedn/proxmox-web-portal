@@ -10,10 +10,13 @@ class User(UserMixin, db.Model):
     password = db.Column(db.String(200), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
 
+    # Relazione con le richieste
+    requests = db.relationship('VMRequest', backref='user', lazy=True)
+
 class VMRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    vm_type = db.Column(db.String(20), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    vm_type = db.Column(db.String(20), nullable=False)  # bronze, silver, gold
     status = db.Column(db.String(20), default='pending')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     vm_id = db.Column(db.Integer, nullable=True)
