@@ -104,7 +104,8 @@ def approve_request(req_id):
             user=Config.PROXMOX_USER,
             password=Config.PROXMOX_PASSWORD,
             port=8006,
-            verify_ssl=Config.PROXMOX_VERIFY_SSL
+            verify_ssl=Config.PROXMOX_VERIFY_SSL,
+            timeout=180
         )
 
         risorse = {
@@ -134,19 +135,27 @@ def approve_request(req_id):
         proxmox.nodes(Config.PROXMOX_NODE).qemu(new_vmid).status.start.post()
 
         time.sleep(12)
-        ip = "IP non ancora disponibile"
+        ip = "IP non ancora disponibile (attendi 30s)"
         try:
-            net = proxmox.nodes(Config.PROXMOX_NODE).qemu(new_vmid).agent('network-get-interfaces').get()
+            proxmox_ip = ProxmoxAPI(
+                Config.PROXMOX_HOST.replace('https://', '').replace('http://', '').split(':')[0],
+                user=Config.PROXMOX_USER,
+                password=Config.PROXMOX_PASSWORD,
+                port=8006,
+                verify_ssl=Config.PROXMOX_VERIFY_SSL,
+                timeout=180
+            )
+            net = proxmox_ip.nodes(Config.PROXMOX_NODE).qemu(new_vmid).agent('network-get-interfaces').get()
             for iface in net['result']:
                 if 'ip-addresses' in iface:
                     for addr in iface['ip-addresses']:
                         if addr.get('ip-address-type') == 'ipv4' and not addr['ip-address'].startswith('127'):
                             ip = addr['ip-address']
                             break
-                    if ip != "IP non ancora disponibile":
+                    if ip != "IP non ancora disponibile (attendi 30s)":
                         break
-        except:
-            pass
+        except Exception as e:
+            print("Impossibile leggere IP:", e)
 
         req.status = 'approved'
         req.vm_id = new_vmid
