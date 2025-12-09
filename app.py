@@ -24,7 +24,7 @@ init_done = False
 def create_tables_and_users():
     global init_done
     if not init_done:
-        db.create_all()  
+        db.create_all()
         if User.query.count() == 0:
             admin = User(username='admin', password=generate_password_hash('admin&1'), is_admin=True)
             smane = User(username='smane', password=generate_password_hash('Smane&1'), is_admin=False)
@@ -108,13 +108,12 @@ def approve_request(req_id):
         )
 
         risorse = {
-            'bronze': {'cores': 1, 'memory': 1024,  'disk': 10},
-            'silver': {'cores': 2, 'memory': 2048,  'disk': 20},
-            'gold':   {'cores': 4, 'memory': 4096,  'disk': 40}
+            'bronze': {'cores': 1, 'memory': 1024},
+            'silver': {'cores': 2, 'memory': 2048},
+            'gold':   {'cores': 4, 'memory': 4096}
         }[req.vm_type]
 
         password = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
-
         new_vmid = 10000 + req.id
 
         proxmox.nodes(Config.PROXMOX_NODE).qemu(9000).clone.post(
@@ -129,15 +128,13 @@ def approve_request(req_id):
             memory=risorse['memory'],
             cipassword=password,
             ciuser='root',
-            searchdomain='local',
-            nameserver='8.8.8.8',
             ipconfig0='ip=dhcp'
         )
 
         proxmox.nodes(Config.PROXMOX_NODE).qemu(new_vmid).status.start.post()
 
         time.sleep(12)
-        ip = "IP non ancora disponibile (attendi 30s)"
+        ip = "IP non ancora disponibile"
         try:
             net = proxmox.nodes(Config.PROXMOX_NODE).qemu(new_vmid).agent('network-get-interfaces').get()
             for iface in net['result']:
@@ -146,7 +143,7 @@ def approve_request(req_id):
                         if addr.get('ip-address-type') == 'ipv4' and not addr['ip-address'].startswith('127'):
                             ip = addr['ip-address']
                             break
-                    if ip != "IP non ancora disponibile (attendi 30s)":
+                    if ip != "IP non ancora disponibile":
                         break
         except:
             pass
@@ -157,7 +154,7 @@ def approve_request(req_id):
         req.password = password
         db.session.commit()
 
-        flash(f'VM CREATA CON SUCCESSO! → ID {new_vmid} | IP: {ip} | Pass: {password}', 'success')
+        flash(f'VM CREATA! → ID {new_vmid} | IP: {ip} | Pass: {password}', 'success')
 
     except Exception as e:
         req.status = 'rejected'
@@ -165,6 +162,23 @@ def approve_request(req_id):
         flash(f'Errore creazione VM: {str(e)}', 'danger')
         print("Errore Proxmox:", e)
 
+    return redirect(url_for('dashboard'))
+
+@app.route('/admin/reject/<int:req_id>')
+@login_required
+def reject_request(req_id):
+    if not current_user.is_admin:
+        flash('Accesso negato', 'danger')
+        return redirect(url_for('dashboard'))
+
+    req = VMRequest.query.get_or_404(req_id)
+    if req.status != 'pending':
+        flash('Richiesta già gestita', 'warning')
+        return redirect(url_for('dashboard'))
+
+    req.status = 'rejected'
+    db.session.commit()
+    flash(f'Richiesta #{req_id} rifiutata', 'info')
     return redirect(url_for('dashboard'))
 
 if __name__ == '__main__':
