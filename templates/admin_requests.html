@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Pannello Admin – Richieste in attesa</h2>
+
+<table class="table table-hover">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Utente</th>
+            <th>Tipo VM</th>
+            <th>Data</th>
+            <th>Azioni</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in requests %}
+        <tr>
+            <td>{{ r.id }}</td>
+            <td>{{ r.user.username if r.user else '—' }}</td>
+            <td>{{ r.vm_type|upper }}</td>
+            <td>{{ r.created_at.strftime('%d/%m %H:%M') }}</td>
+            <td>
+                {% if r.status == 'pending' %}
+                    <a href="{{ url_for('approve_request', req_id=r.id) }}" class="btn btn-sm btn-success">Approva</a>
+                    <a href="{{ url_for('reject_request', req_id=r.id) }}" class="btn btn-sm btn-danger">Rifiuta</a>
+                {% else %}
+                    <i><i>{{ r.status|upper }}</i></span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Richiedi una nuova macchina virtuale</h2>
+<form method="POST">
+    <div class="mb-3">
+        <label>Tipo di macchina</label>
+        <select name="vm_type" class="form-select" required>
+            <option value="bronze">Bronze (1 core / 1 GB)</option>
+            <option value="silver">Silver (2 core / 2 GB)</option>
+            <option value="gold">Gold (4 core / 4 GB)</option>
+        </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Invia richiesta</button>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Annulla</a>
+</form>
+{% endblock %}
