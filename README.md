@@ -23,8 +23,12 @@ Portale web Flask per richiedere e creare VM su Proxmox VE.
 
 ## Installazione
 - Avviare tutti i nodi su Proxmox
-- Avviare la macchina che contiene il progetto Web
+- Avviare la macchina che contiene il progetto Web (id 1003 portal-vm)
 - Avviare il servizio web / In caso mancante clonare dal github e installare i requisiti tramite il "requirements.txt"
-
+- Controllare la presenza della cartella "instance" sotto "proxmox-web-portal", se mancante crearla 
+```bash 
+mkdir -p instance
+```
+- Avviare l'app
 ```bash
 python app.py

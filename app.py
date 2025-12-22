@@ -114,8 +114,7 @@ def approve_request(req_id):
             'gold':   {'cores': 4, 'memory': 4096}
         }[req.vm_type]
 
-        ##password = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
-        password="Password&1!"
+        password = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
         new_vmid = 10000 + req.id
 
         proxmox.nodes(Config.PROXMOX_NODE).qemu(9000).clone.post(
