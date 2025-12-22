@@ -114,7 +114,8 @@ def approve_request(req_id):
             'gold':   {'cores': 4, 'memory': 4096}
         }[req.vm_type]
 
-        password = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+        ##password = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+        password="Password&1!"
         new_vmid = 10000 + req.id
 
         proxmox.nodes(Config.PROXMOX_NODE).qemu(9000).clone.post(
@@ -143,7 +144,7 @@ def approve_request(req_id):
                 password=Config.PROXMOX_PASSWORD,
                 port=8006,
                 verify_ssl=Config.PROXMOX_VERIFY_SSL,
-                timeout=180
+                timeout=240
             )
             net = proxmox_ip.nodes(Config.PROXMOX_NODE).qemu(new_vmid).agent('network-get-interfaces').get()
             for iface in net['result']:

@@ -10,7 +10,7 @@ class User(UserMixin, db.Model):
     password = db.Column(db.String(200), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
 
-    # Relazione con le richieste
+    #relazione con le richieste
     requests = db.relationship('VMRequest', backref='user', lazy=True)
 
 class VMRequest(db.Model):

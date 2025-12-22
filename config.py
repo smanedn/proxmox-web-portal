@@ -3,7 +3,7 @@ import os
 basedir = os.path.abspath(os.path.dirname(__file__))
 
 class Config:
-    SECRET_KEY = 'questa-è-una-chiave-super-sicura-cambia-pure-se-vuoi'
+    SECRET_KEY = 'SeCr3t_k4y'
 
     SQLALCHEMY_DATABASE_URI = 'sqlite:///' + os.path.join(basedir, 'instance', 'users.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
